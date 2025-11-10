@@ -1,6 +1,6 @@
 """Player MCP tool handlers."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 # These will be injected from main file
 yahoo_api_call = None
@@ -622,5 +622,276 @@ async def handle_ff_get_waiver_wire(arguments: dict) -> dict:
             result["note"] = "No players could be enhanced"
     except Exception as exc:
         result["note"] = f"Enhancement failed: {exc}. Using basic data."
+
+    return result
+
+
+async def handle_ff_get_player_weekly_points(arguments: dict) -> dict:
+    """Fetch per-week fantasy production and projections for a Yahoo player."""
+
+    if yahoo_api_call is None:
+        return {
+            "status": "error",
+            "error": "missing_dependency",
+            "message": "yahoo_api_call dependency has not been injected",
+        }
+
+    league_input = arguments.get("league_id") or arguments.get("league_key")
+    player_input = arguments.get("player_id") or arguments.get("player_key")
+    start_week_raw = arguments.get("start_week")
+    end_week_raw = arguments.get("end_week")
+    season_raw = arguments.get("season")
+
+    if not league_input:
+        return {
+            "status": "error",
+            "error": "missing_league_id",
+            "message": "league_id (or league_key) is required",
+        }
+    if not player_input:
+        return {
+            "status": "error",
+            "error": "missing_player_id",
+            "message": "player_id (or player_key) is required",
+        }
+
+    league_input = str(league_input).strip()
+    player_input = str(player_input).strip()
+
+    async def _resolve_league_key(raw: str) -> str:
+        if "." in raw:
+            return raw
+        try:
+            from fantasy_football_multi_league import discover_leagues
+
+            leagues = await discover_leagues()
+            for league in leagues.values():
+                if str(league.get("id")) == raw or str(league.get("key")) == raw:
+                    key = league.get("key")
+                    if key:
+                        return key
+        except Exception:
+            # Fall back to default formatting below
+            pass
+        if raw.isdigit():
+            return f"nfl.l.{raw}"
+        return raw
+
+    def _normalize_player_key(raw: str) -> str:
+        if "." in raw:
+            return raw
+        if raw.isdigit():
+            return f"nfl.p.{raw}"
+        return raw
+
+    def _safe_float(value: Any) -> Optional[float]:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                return None
+        return None
+
+    def _round_or_none(value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            return round(float(value), 2)
+        except (TypeError, ValueError):
+            return None
+
+    def _extract_projection_points(projection: Dict[str, Any]) -> Optional[float]:
+        if not isinstance(projection, dict):
+            return None
+
+        for key in ("pts_ppr", "pts", "pts_std", "pts_half_ppr"):
+            val = _safe_float(projection.get(key))
+            if val is not None:
+                return val
+
+        stats_block = projection.get("projected_stats")
+        if isinstance(stats_block, list):
+            total = 0.0
+            found = False
+            for stat in stats_block:
+                if not isinstance(stat, dict):
+                    continue
+                stat_val = _safe_float(stat.get("pts_ppr") or stat.get("pts"))
+                if stat_val is None:
+                    continue
+                total += stat_val
+                found = True
+            if found:
+                return total
+        elif isinstance(stats_block, dict):
+            val = _safe_float(stats_block.get("pts_ppr") or stats_block.get("pts"))
+            if val is not None:
+                return val
+
+        return None
+
+    league_key = await _resolve_league_key(league_input)
+    player_key = _normalize_player_key(player_input)
+
+    try:
+        player_payload = await yahoo_api_call(
+            f"league/{league_key}/players;player_keys={player_key}"
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": "yahoo_player_lookup_failed",
+            "message": f"Failed to fetch player details from Yahoo: {exc}",
+        }
+
+    def _extract_player_info(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        league_section = payload.get("fantasy_content", {}).get("league", [])
+        for element in league_section:
+            if not isinstance(element, dict) or "players" not in element:
+                continue
+            players_section = element["players"]
+            if not isinstance(players_section, dict):
+                continue
+            for entry_key, player_entry in players_section.items():
+                if entry_key == "count" or not isinstance(player_entry, dict):
+                    continue
+                player_array = player_entry.get("player")
+                if not isinstance(player_array, list):
+                    continue
+                info: Dict[str, Any] = {"player_key": player_key}
+                for item in player_array:
+                    if not isinstance(item, dict):
+                        continue
+                    if "player_key" in item:
+                        info["player_key"] = item["player_key"]
+                    if "player_id" in item:
+                        info["yahoo_player_id"] = item["player_id"]
+                    if "name" in item and isinstance(item["name"], dict):
+                        info["name"] = item["name"].get("full") or info.get("name")
+                    if "editorial_team_abbr" in item:
+                        info["team"] = item["editorial_team_abbr"]
+                    if "display_position" in item:
+                        info["position"] = item["display_position"]
+                if info.get("name"):
+                    return info
+        return None
+
+    player_info = _extract_player_info(player_payload)
+    if not player_info:
+        return {
+            "status": "error",
+            "error": "player_not_found",
+            "message": "Could not locate player in Yahoo response",
+            "league_key": league_key,
+            "player_key": player_key,
+        }
+
+    try:
+        from sleeper_api import get_current_season, get_current_week, sleeper_client
+    except ImportError as exc:
+        return {
+            "status": "error",
+            "error": "sleeper_import_failed",
+            "message": f"Sleeper API unavailable: {exc}",
+        }
+
+    try:
+        sleeper_id = await sleeper_client.map_yahoo_to_sleeper(
+            player_info.get("name", ""),
+            position=player_info.get("position"),
+            team=player_info.get("team"),
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": "sleeper_mapping_failed",
+            "message": f"Unable to map Yahoo player to Sleeper: {exc}",
+        }
+
+    if not sleeper_id:
+        return {
+            "status": "error",
+            "error": "sleeper_id_missing",
+            "message": (
+                "Unable to resolve Sleeper player ID for the specified player. "
+                "Consider providing the full Yahoo player_key."
+            ),
+        }
+
+    def _parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    season = _parse_int(season_raw)
+    if season is None:
+        season = await get_current_season()
+
+    current_week = await get_current_week()
+    start_week = max(_parse_int(start_week_raw, 1) or 1, 1)
+    requested_end_week = _parse_int(end_week_raw)
+    if requested_end_week is not None:
+        end_week = max(start_week, min(requested_end_week, 18))
+    else:
+        end_week = min(max(current_week, start_week), 18)
+
+    weekly_results: List[Dict[str, Any]] = []
+    warnings: List[str] = []
+    sleeper_key = str(sleeper_id)
+
+    for week in range(start_week, end_week + 1):
+        week_entry: Dict[str, Any] = {"week_number": week}
+
+        earned_points: Optional[float] = None
+        try:
+            stats_payload = await sleeper_client.get_player_stats(season, week)
+            if isinstance(stats_payload, dict):
+                player_stats = stats_payload.get(sleeper_key) or stats_payload.get(sleeper_id)
+                if isinstance(player_stats, dict):
+                    earned_points = _safe_float(
+                        player_stats.get("pts_ppr")
+                    ) or _safe_float(player_stats.get("pts"))
+        except Exception as exc:
+            warnings.append(f"Week {week}: Sleeper stats unavailable ({exc})")
+
+        projection_points: Optional[float] = None
+        try:
+            projections_payload = await sleeper_client.get_projections(season, week)
+            if isinstance(projections_payload, dict):
+                player_projection = projections_payload.get(sleeper_key) or projections_payload.get(
+                    sleeper_id
+                )
+                if isinstance(player_projection, dict):
+                    projection_points = _extract_projection_points(player_projection)
+        except Exception as exc:
+            warnings.append(f"Week {week}: Sleeper projections unavailable ({exc})")
+
+        week_entry["earned_points"] = _round_or_none(earned_points)
+        week_entry["sleeper_projected_points"] = _round_or_none(projection_points)
+        weekly_results.append(week_entry)
+
+    result = {
+        "status": "success",
+        "league_key": league_key,
+        "league_id": league_input,
+        "player_name": player_info.get("name"),
+        "player_key": player_info.get("player_key"),
+        "yahoo_player_id": player_info.get("yahoo_player_id"),
+        "position": player_info.get("position"),
+        "team": player_info.get("team"),
+        "sleeper_id": sleeper_key,
+        "season": season,
+        "start_week": start_week,
+        "end_week": end_week,
+        "weeks": weekly_results,
+    }
+
+    if warnings:
+        result["warnings"] = warnings
 
     return result

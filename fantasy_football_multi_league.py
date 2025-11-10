@@ -39,6 +39,7 @@ from src.handlers import (
     handle_ff_get_leagues,
     handle_ff_get_matchup,
     handle_ff_get_players,
+    handle_ff_get_player_weekly_points,
     handle_ff_get_roster,
     handle_ff_get_standings,
     handle_ff_get_teams,
@@ -286,7 +287,7 @@ async def get_waiver_wire_players(
                                             player_info["team"] = element["editorial_team_abbr"]
                                         if "display_position" in element:
                                             player_info["position"] = element["display_position"]
-                                        
+
                                         # Extract bye week with fallback to static data
                                         api_bye_week = None
                                         if "bye_weeks" in element:
@@ -298,7 +299,7 @@ async def get_waiver_wire_players(
                                                     bye_num = int(bye_week)
                                                     if 1 <= bye_num <= 18:
                                                         api_bye_week = bye_num
-                                        
+
                                         # Use fallback utility to get bye week (tries API first, then static data)
                                         team_abbr = element.get("editorial_team_abbr", "")
                                         player_info["bye"] = get_bye_week_with_fallback(team_abbr, api_bye_week)
@@ -385,7 +386,7 @@ async def get_draft_rankings(
                                             player_info["team"] = element["editorial_team_abbr"]
                                         if "display_position" in element:
                                             player_info["position"] = element["display_position"]
-                                        
+
                                         # Extract bye week with fallback to static data
                                         api_bye_week = None
                                         if "bye_weeks" in element:
@@ -397,7 +398,7 @@ async def get_draft_rankings(
                                                     bye_num = int(bye_week)
                                                     if 1 <= bye_num <= 18:
                                                         api_bye_week = bye_num
-                                        
+
                                         # Use fallback utility to get bye week (tries API first, then static data)
                                         team_abbr = element.get("editorial_team_abbr", "")
                                         player_info["bye"] = get_bye_week_with_fallback(team_abbr, api_bye_week)
@@ -665,6 +666,36 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="ff_get_player_weekly_points",
+            description="Get per-week earned points and Sleeper projections for a player in a league",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "league_id": {
+                        "type": "string",
+                        "description": "League identifier (numeric ID or full league_key)",
+                    },
+                    "player_id": {
+                        "type": "string",
+                        "description": "Player identifier (numeric ID or full player_key)",
+                    },
+                    "start_week": {
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
+                        "description": "First week to include (defaults to 1)",
+                    },
+                    "end_week": {
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
+                        "description": "Last week to include (defaults to current week)",
+                    },
+                    "season": {
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
+                        "description": "Season year (defaults to current NFL season)",
+                    },
+                },
+                "required": ["league_id", "player_id"],
+            },
+        ),
+        Tool(
             name="ff_compare_teams",
             description="Compare two teams' rosters within a league",
             inputSchema={
@@ -923,6 +954,7 @@ TOOL_HANDLERS: dict[str, Callable[[dict], Awaitable[dict]]] = {
     "ff_get_roster_with_projections": handle_ff_get_roster,
     "ff_get_matchup": handle_ff_get_matchup,
     "ff_get_players": handle_ff_get_players,
+    "ff_get_player_weekly_points": handle_ff_get_player_weekly_points,
     "ff_compare_teams": handle_ff_compare_teams,
     "ff_build_lineup": handle_ff_build_lineup,
     "ff_refresh_token": handle_ff_refresh_token,

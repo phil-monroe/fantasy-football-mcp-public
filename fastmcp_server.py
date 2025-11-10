@@ -61,6 +61,10 @@ _TOOL_PROMPTS: Dict[str, str] = {
         "Yahoo players by position and limiting the result count. Accepts optional "
         "parameters for enhanced analysis similar to roster data."
     ),
+    "ff_get_player_weekly_points": (
+        "Track a player's week-by-week fantasy production with Sleeper projections. "
+        "Parameters: league_id (or league_key), player_id (or full player_key), optional start_week, end_week, and season."
+    ),
     "ff_compare_teams": (
         "Contrast two league rosters side-by-side to evaluate trades or matchup "
         "advantages. Provide both Yahoo team keys."
@@ -479,6 +483,45 @@ async def ff_get_players(
         include_analysis=include_analysis,
         include_projections=include_projections,
         include_external_data=include_external_data,
+    )
+
+
+@server.tool(
+    name="ff_get_player_weekly_points",
+    description=(
+        "Get a player's weekly fantasy points alongside Sleeper projections. "
+        "Parameters: league_id (or league_key), player_id (or full player_key), optional start_week, end_week, season."
+    ),
+    meta=_tool_meta("ff_get_player_weekly_points"),
+    annotations=_read_only_annotations(),
+)
+async def ff_get_player_weekly_points(
+    ctx: Context,
+    league_id: str,
+    player_id: str,
+    start_week: Optional[int] = None,
+    end_week: Optional[int] = None,
+    season: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Retrieve per-week fantasy production for a Yahoo player with Sleeper projections.
+
+    Args:
+        league_id: Yahoo league identifier (numeric or league_key)
+        player_id: Yahoo player identifier (numeric or player_key)
+        start_week: First week to include (defaults to Week 1)
+        end_week: Final week to include (defaults to current week)
+        season: Season year (defaults to current NFL season)
+    """
+
+    return await _call_legacy_tool(
+        "ff_get_player_weekly_points",
+        ctx=ctx,
+        league_id=league_id,
+        player_id=player_id,
+        start_week=start_week,
+        end_week=end_week,
+        season=season,
     )
 
 

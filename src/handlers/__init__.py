@@ -29,6 +29,7 @@ from .matchup_handlers import (
 from .player_handlers import (
     handle_ff_get_players,
     handle_ff_get_waiver_wire,
+    handle_ff_get_player_weekly_points,
 )
 
 # Draft handlers (need dependency injection)
@@ -132,6 +133,7 @@ __all__ = [
     # Player handlers (extracted, need dependency injection)
     "handle_ff_get_players",
     "handle_ff_get_waiver_wire",
+    "handle_ff_get_player_weekly_points",
     # Draft handlers (extracted, need dependency injection)
     "handle_ff_get_draft_results",
     "handle_ff_get_draft_rankings",
