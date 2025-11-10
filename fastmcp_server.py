@@ -14,7 +14,7 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Awaitable, Callable, Dict, Literal, Optional, Sequence, Union
 
 from fastmcp import Context, FastMCP
-from mcp.types import ContentBlock, TextContent
+from mcp.types import ContentBlock, TextContent, ToolAnnotations
 
 import fantasy_football_multi_league
 
@@ -110,6 +110,12 @@ def _tool_meta(name: str) -> Dict[str, str]:
     """Helper to attach consistent prompt metadata to each tool."""
 
     return {"prompt": _TOOL_PROMPTS[name]}
+
+
+def _read_only_annotations() -> ToolAnnotations:
+    """Create the standard read-only annotation for MCP tools."""
+
+    return ToolAnnotations(readOnlyHint=True)
 
 
 async def _call_legacy_tool(
@@ -209,6 +215,7 @@ async def _call_legacy_tool(
         "For player searches use ff_get_players or ff_get_waiver_wire."
     ),
     meta=_tool_meta("ff_get_leagues"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_leagues(ctx: Context) -> Dict[str, Any]:
     """
@@ -237,6 +244,7 @@ async def ff_get_leagues(ctx: Context) -> Dict[str, Any]:
         "Returns scoring type, roster requirements, and your team summary."
     ),
     meta=_tool_meta("ff_get_league_info"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_league_info(
     ctx: Context,
@@ -267,6 +275,7 @@ async def ff_get_league_info(
         "For available players use ff_get_players or ff_get_waiver_wire."
     ),
     meta=_tool_meta("ff_get_roster"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_roster(
     ctx: Context,
@@ -362,6 +371,7 @@ async def ff_get_roster(
         "Returns rank, wins, losses, points for/against for all teams."
     ),
     meta=_tool_meta("ff_get_standings"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_standings(
     ctx: Context,
@@ -387,6 +397,7 @@ async def ff_get_standings(
         "Returns opponent info and projected scores."
     ),
     meta=_tool_meta("ff_get_matchup"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_matchup(
     ctx: Context,
@@ -420,6 +431,7 @@ async def ff_get_matchup(
         "For YOUR roster use ff_get_roster. For waiver analysis use ff_get_waiver_wire."
     ),
     meta=_tool_meta("ff_get_players"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_players(
     ctx: Context,
@@ -477,6 +489,7 @@ async def ff_get_players(
         "or matchup analysis. Provide both team keys."
     ),
     meta=_tool_meta("ff_compare_teams"),
+    annotations=_read_only_annotations(),
 )
 async def ff_compare_teams(
     ctx: Context,
@@ -500,6 +513,7 @@ async def ff_compare_teams(
         "Uses advanced analytics including matchup analysis, player projections, and situational factors."
     ),
     meta=_tool_meta("ff_build_lineup"),
+    annotations=_read_only_annotations(),
 )
 async def ff_build_lineup(
     ctx: Context,
@@ -526,6 +540,7 @@ async def ff_build_lineup(
         "Use when API calls return 401 authentication errors."
     ),
     meta=_tool_meta("ff_refresh_token"),
+    annotations=_read_only_annotations(),
 )
 async def ff_refresh_token(ctx: Context) -> Dict[str, Any]:
     """
@@ -549,6 +564,7 @@ async def ff_refresh_token(ctx: Context) -> Dict[str, Any]:
         "Returns cache metrics and API throttling status."
     ),
     meta=_tool_meta("ff_get_api_status"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_api_status(ctx: Context) -> Dict[str, Any]:
     """
@@ -569,6 +585,7 @@ async def ff_get_api_status(ctx: Context) -> Dict[str, Any]:
         "clear a subset of cached endpoints."
     ),
     meta=_tool_meta("ff_clear_cache"),
+    annotations=_read_only_annotations(),
 )
 async def ff_clear_cache(
     ctx: Context,
@@ -584,6 +601,7 @@ async def ff_clear_cache(
         "review draft performance."
     ),
     meta=_tool_meta("ff_get_draft_results"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_draft_results(ctx: Context, league_key: str) -> Dict[str, Any]:
     return await _call_legacy_tool("ff_get_draft_results", ctx=ctx, league_key=league_key)
@@ -598,6 +616,7 @@ async def ff_get_draft_results(ctx: Context, league_key: str) -> Dict[str, Any]:
         "For YOUR roster use ff_get_roster. For simple player search use ff_get_players."
     ),
     meta=_tool_meta("ff_get_waiver_wire"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_waiver_wire(
     ctx: Context,
@@ -701,6 +720,7 @@ async def ff_get_waiver_wire(
         "drafts to evaluate player tiers."
     ),
     meta=_tool_meta("ff_get_draft_rankings"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_draft_rankings(
     ctx: Context,
@@ -724,6 +744,7 @@ async def ff_get_draft_rankings(
         "balanced, aggressive, or conservative."
     ),
     meta=_tool_meta("ff_get_draft_recommendation"),
+    annotations=_read_only_annotations(),
 )
 async def ff_get_draft_recommendation(
     ctx: Context,
@@ -749,6 +770,7 @@ async def ff_get_draft_recommendation(
         "positional needs and strategic advice."
     ),
     meta=_tool_meta("ff_analyze_draft_state"),
+    annotations=_read_only_annotations(),
 )
 async def ff_analyze_draft_state(
     ctx: Context,
@@ -770,6 +792,7 @@ async def ff_analyze_draft_state(
         "sentiment, injury mentions, and engagement levels."
     ),
     meta=_tool_meta("ff_analyze_reddit_sentiment"),
+    annotations=_read_only_annotations(),
 )
 async def ff_analyze_reddit_sentiment(
     ctx: Context,
@@ -809,8 +832,8 @@ async def ff_analyze_reddit_sentiment(
 @server.prompt
 def analyze_roster_strengths(league_key: str, team_key: str) -> str:
     """Generate a prompt for analyzing roster strengths and weaknesses."""
-    return f"""Please analyze the fantasy football roster for team {team_key} in league {league_key}. 
-    
+    return f"""Please analyze the fantasy football roster for team {team_key} in league {league_key}.
+
 Focus on:
 1. Positional depth and strength
 2. Starting lineup quality vs bench depth
@@ -925,7 +948,7 @@ Analyze:
 Provide a week-by-week action plan."""
 
 
-@server.prompt  
+@server.prompt
 def playoff_preparation(league_key: str, team_key: str, current_week: int) -> str:
     """Generate a prompt for playoff preparation strategy."""
     return f"""Create a playoff preparation strategy for team {team_key} in league {league_key} (currently Week {current_week}).
@@ -1102,7 +1125,7 @@ def get_position_info() -> str:
 STANDARD LEAGUE (10-12 teams):
 - QB: 1 starter
 - RB: 2 starters
-- WR: 2 starters  
+- WR: 2 starters
 - TE: 1 starter
 - FLEX: 1 (RB/WR/TE)
 - K: 1 starter
